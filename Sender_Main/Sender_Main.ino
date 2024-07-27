@@ -1,23 +1,23 @@
 /* Includes ---------------------------------------------------------------- */
 #include <Aniruddha-project-1_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
-
+    
 #include "esp_camera.h"
 
 //ESP-NoW Code
 #include <esp_now.h>
 #include <WiFi.h>
-
+//94:E6:86:37:E3:D0
 // REPLACE WITH YOUR RECEIVER MAC Address
 uint8_t broadcastAddress[] = {0xFF94, 0xFFE6, 0xFF86, 0xFF37, 0xFFE3, 0xFFD0};
 
 // Structure example to send data
 // Must match the receiver structure
 typedef struct struct_message {
-  char a[32];//Changed
+  //char a[32];
   int b;
   float c;
-  bool d;
+  //bool d;
 } struct_message;
 
 // Create a struct_message called myData
@@ -146,7 +146,6 @@ void setup()
     // Once ESPNow is successfully Init, we will register for Send CB to
     // get the status of Transmitted packet
     esp_now_register_send_cb(OnDataSent);
-  
     // Register peer
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
     peerInfo.channel = 0;  
@@ -234,28 +233,28 @@ void loop()
     //Conditioning
     if(bb.label=="B")
     {
-      if(bb.value >=0.6)
+      if(bb.value >=0.85)
       {
         sentLabel=1;//1 for Biodegradable
       }
     }
     else if(bb.label=="N"){
-      if(bb.value>=0.5)
+      if(bb.value>=0.85)
       {
         sentLabel=2;//2 for Non-Biodegradable
       }
     }
-    else{//Provision for Garbage value  detection
+    else{//Provision for Garbage value Detection
       Serial.println("ERRORR");
     }
     // Set values to send
-    strcpy(myData.a, "THIS IS A CHAIR");
+    //strcpy(myData.a, "THIS IS A CHAIR");
     if(sentLabel>0)
     {
       myData.b = sentLabel;
     }
-    myData.c = 1.2;
-    myData.d = false;
+    myData.c = 0.0;
+    //myData.d = false;
     
     // Send message via ESP-NOW
     esp_err_t SendingResult = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
@@ -268,7 +267,7 @@ void loop()
     delay(2000);      
     }
     if (!bb_found) {
-        ei_printf("    No objects found\n");
+        ei_printf("    Scanning.....\n");
     }
 #else
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {

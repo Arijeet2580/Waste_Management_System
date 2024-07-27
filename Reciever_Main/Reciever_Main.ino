@@ -1,20 +1,24 @@
 #include <esp_now.h>
 #include <WiFi.h>
+//Alert LED Code
+#define BIO_LED 25
+#define NBIO_LED 26
 //Servo Code
 #include <ESP32Servo.h>
-#define PIN_SG90 23 // Output pin used
-#define PIN_SG91 21
 
-Servo sg90;
-Servo sg91;
+Servo sg1;
+Servo sg2;
+
+int sg1pin=18;
+int sg2pin=19;
 
 // Structure example to receive data
 // Must match the sender structure
 typedef struct struct_message {
-    char a[32];
+    //char a[32];
     int b;
     float c;
-    bool d;
+    //bool d;
 } struct_message;
 
 // Create a struct_message called myData
@@ -26,71 +30,53 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&myData, incomingData, sizeof(myData));
   Serial.print("Bytes received: ");
   Serial.println(len);
-  //Serial.print("Char: ");
-  //Serial.println(myData.a);
   Serial.print("Int: ");
   Serial.println(myData.b);
   //Serial.print("Float: ");
   //Serial.println(myData.c);
-  //Serial.print("Bool: ");
-  //Serial.println(myData.d);
   Serial.println();
-
+  sg1.write(90);
+  delay(1);
+  sg2.write(90);
   if(myData.b==1)//BIODEGRADABLE WASTE
   {   
-    Serial.println("BIOD"); 
-    digitalWrite(LED_BUILTIN,HIGH);
-    delay(3000);
-    digitalWrite(LED_BUILTIN,LOW);
-    //rotation from 90 to 0°
-    for (int pos = 90; pos >= 0; pos -= 1) 
-    {
-      sg90.write(pos);
-      sg91.write(90-pos);
-      delay(10000);
-    }
-    // Rotation from 0° to 90
-    for (int pos = 0; pos <= 90; pos += 1) 
-    {
-      sg90.write(pos);
-      sg91.write(90-pos);
-      break;
-    }
+    Serial.println("Biodegradable"); 
+    digitalWrite(BIO_LED,HIGH);
+    sg1.write(0);
+    delay(1);
+    sg2.write(180);
+    delay(5000);//Halt delay 5 seconds
+    sg1.write(90);
+    delay(1);
+    sg2.write(0);
+    delay(10);//For Servo Working physically
+    //Alert LED
+    digitalWrite(BIO_LED,LOW);
   }
   else if(myData.b==2)//NON-BIODEGRADABLE WASTE
   {
-    Serial.println("Non-BIOD");
-    digitalWrite(LED_BUILTIN,HIGH);
-    delay(5000);
-    digitalWrite(LED_BUILTIN,LOW);
-    //rotation from 90 to 180°
-    for (int pos = 90; pos <= 180; pos += 1) 
-    {
-      sg90.write(pos);
-      sg91.write(180-pos);
-      delay(10000);
-    }
-    // Rotation from 180° to 90
-    for (int pos = 180; pos >= 90; pos -= 1)
-    {
-      sg90.write(pos);
-      sg91.write(180-pos);
-      break;
-    }
+    Serial.println("Non-Biodegradable");
+    digitalWrite(NBIO_LED,HIGH);
+    sg1.write(180);
+    delay(1);
+    sg2.write(0);
+    delay(5000);//Halt delay 5 Seconds
+    sg1.write(90);
+    delay(1);
+    sg2.write(90);
+    digitalWrite(BIO_LED,LOW);
+    delay(10); //For Servo Working physically
   }
   else{
-    Serial.println("error");
+    Serial.println("The Coming Dataset is not from any conditions given");
   }
-
+  delay(1);//For Servo Working physically
 }
  
 void setup() {
-  pinMode(LED_BUILTIN,OUTPUT);
   //Servo Code
-  sg90.setPeriodHertz(50); // PWM frequency for SG90
-  sg90.attach(PIN_SG90, 500, 2400); // Minimum and maximum pulse width (in µs) to go from 0° to 180
-  sg91.setPeriodHertz(50); // PWM frequency for SG91
-  sg91.attach(PIN_SG91, 500, 2400); // Minimum and maximum pulse width (in µs) to go from 0° to 180
+  sg1.attach(sg1pin);
+  sg2.attach(sg2pin);
 
   // Initialize Serial Monitor
   Serial.begin(115200);
