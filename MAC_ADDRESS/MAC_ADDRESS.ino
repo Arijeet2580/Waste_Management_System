@@ -9,5 +9,6 @@ void setup(){
 }
  
 void loop(){
+  Serial.print("The MAC Address of the ESP Connected is: ");
   Serial.println(WiFi.macAddress());
 }
