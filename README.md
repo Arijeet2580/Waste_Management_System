@@ -1,4 +1,4 @@
-# Waste_Management_System
+# Waste Management System
 ## Overview
 
 This project implements a smart waste management system utilizing ESP-32 Cam modules to detect anomalies in waste segregation. The system identifies incorrect waste placement (e.g., non-biodegradable waste in biodegradable bins) with an 80% probability and communicates this information to a central ESP-32 Main Board. The Main Board, upon receiving the data, makes decisions based on the sensor inputs and actuates servo motors to open the appropriate waste bin lid.
