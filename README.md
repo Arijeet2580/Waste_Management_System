@@ -1,7 +1,7 @@
 # Waste Management System
 ## Overview
 
-This project implements a smart waste management system utilizing ESP-32 Cam modules to detect anomalies in waste segregation. The system identifies incorrect waste placement (e.g., non-biodegradable waste in biodegradable bins) with an 80% probability and communicates this information to a central ESP-32 Main Board. The Main Board, upon receiving the data, makes decisions based on the sensor inputs and actuates servo motors to open the appropriate waste bin lid.
+This project implements a smart waste management system utilizing ESP-32 Cam modules to detect anomalies in waste segregation. The system identifies incorrect waste placement (e.g., non-biodegradable waste in biodegradable bins) with an 80% probability and communicates this information to a central ESP-32 Main Board. The Main Board, upon receiving the data, makes decisions based on the sensor inputs and actuates servo motors to open the appropriate waste bin lid
 
 ## Project Structure
 
@@ -47,6 +47,12 @@ This project implements a smart waste management system utilizing ESP-32 Cam mod
    - Open `MAC_Address` code in Arduino IDE.
    - Upload the code to the ESP-32 Main Board.
    - Open the Serial Monitor to find and note down the MAC address of the Main Board.
+
+### Example
+   1. The MAC Address used by us are C0:49:EF:D2:B7:E8
+   2. Update the Broadcast Address as 0xFFC0
+   3. The Broadcast Address array will be
+      **0xFFC0, 0xFF49, 0xFFEF, 0xFFD2, 0xFFB7, 0xFFE8**
 
 3. **Configure Sender_main**:
    - Update the `Sender_main` code with the MAC address noted from the previous step.

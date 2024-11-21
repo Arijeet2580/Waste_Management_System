@@ -7,9 +7,9 @@
 //ESP-NoW Code
 #include <esp_now.h>
 #include <WiFi.h>
-//94:E6:86:37:E3:D0
+//C0:49:EF:D2:B7:E8
 // REPLACE WITH YOUR RECEIVER MAC Address
-uint8_t broadcastAddress[] = {0xFF94, 0xFFE6, 0xFF86, 0xFF37, 0xFFE3, 0xFFD0};
+uint8_t broadcastAddress[] = {0xFFC0, 0xFF49, 0xFFEF, 0xFFD2, 0xFFB7, 0xFFE8};
 
 // Structure example to send data
 // Must match the receiver structure
