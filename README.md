@@ -48,6 +48,12 @@ This project implements a smart waste management system utilizing ESP-32 Cam mod
    - Upload the code to the ESP-32 Main Board.
    - Open the Serial Monitor to find and note down the MAC address of the Main Board.
 
+### Example
+   1. The MAC Address used by us are C0:49:EF:D2:B7:E8
+   2. Update the Broadcast Address as 0xFFC0
+   3. The Broadcast Address array will be
+      **0xFFC0, 0xFF49, 0xFFEF, 0xFFD2, 0xFFB7, 0xFFE8**
+
 3. **Configure Sender_main**:
    - Update the `Sender_main` code with the MAC address noted from the previous step.
    - Upload the updated `Sender_main` code to the ESP-32 Cam module.
