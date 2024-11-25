@@ -52,7 +52,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   double humi = dht.readHumidity();
   double temp = dht.readTemperature();
 
-  if(isNan(humi)|| isNan(temp)){
+  if(isnan(humi)|| isnan(temp)){
     Serial.println("Failed to read from DHT Sensor");
     return ;
   }  
