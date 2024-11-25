@@ -8,7 +8,7 @@ void setup() {
 /* BIODEGRADABLE DETECTED NEAR TO 40PPM ----> 735ADC*/
 void loop() {
   // put your main code here, to run repeatedly:
-  float SV = analogRead(A0);
+  int SV = analogRead(A0);
   int ppm = (195*(SV/4095))+5;
   Serial.print("ADC Val: ");
   Serial.println(SV);
