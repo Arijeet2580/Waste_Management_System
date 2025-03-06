@@ -27,7 +27,8 @@ This project implements a smart waste management system utilizing ESP-32 Cam mod
 - ESP-32 Cam Module
 - ESP-32 Main Board
 - Servo Motors
-- Various sensors (e.g., proximity sensors)
+- DHT22 Humidity & Temperature sensor
+- MQ137 H2S Gas Sensor
 - Power supply and connectors
 
 ### Software Requirements

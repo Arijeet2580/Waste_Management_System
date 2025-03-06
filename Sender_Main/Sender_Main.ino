@@ -1,29 +1,27 @@
 /* Includes ---------------------------------------------------------------- */
-#include <Aniruddha-project-1_inferencing.h>
+#include <Waste_Management_Project_inferencing.h>
 #include "edge-impulse-sdk/dsp/image/image.hpp"
-    
-#include "esp_camera.h"
 
-//ESP-NoW Code
+#include "esp_camera.h"
 #include <esp_now.h>
 #include <WiFi.h>
-//C0:49:EF:D2:B7:E8
 // REPLACE WITH YOUR RECEIVER MAC Address
-uint8_t broadcastAddress[] = {0xFFC0, 0xFF49, 0xFFEF, 0xFFD2, 0xFFB7, 0xFFE8};
+uint8_t broadcastAddress[] = {0xFF94, 0xFFE6, 0xFF86, 0xFF37, 0xFFE3, 0xFFD0};
 
 // Structure example to send data
 // Must match the receiver structure
 typedef struct struct_message {
-  //char a[32];
+  char a[32];
   int b;
   float c;
-  //bool d;
+  bool d;
 } struct_message;
 
 // Create a struct_message called myData
 struct_message myData;
 
 esp_now_peer_info_t peerInfo;
+
 // callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.print("\r\nLast Packet Send Status:\t");
@@ -133,30 +131,30 @@ void setup()
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
-    // Set device as a Wi-Fi Station
-    WiFi.mode(WIFI_STA);
-    //Sender Code
 
-    // Init ESP-NOW
-    if (esp_now_init() != ESP_OK) {
+    //Set Device as a Wi-Fi Station
+  WiFi.mode(WIFI_STA);
+
+  // Init ESP-NOW
+  if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
-    }
+  }
 
-    // Once ESPNow is successfully Init, we will register for Send CB to
-    // get the status of Transmitted packet
-    esp_now_register_send_cb(OnDataSent);
-    // Register peer
-    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    peerInfo.channel = 0;  
-    peerInfo.encrypt = false;
-
-    // Add peer        
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Transmitted packet
+  esp_now_register_send_cb(OnDataSent);
+  
+  // Register peer
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  
+  // Add peer        
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add peer");
     return;
-    }  
-    //ML Code  
+  }    
     //comment out the below line to start inference immediately after upload
     while (!Serial);
     Serial.println("Edge Impulse Inferencing Demo");
@@ -178,7 +176,7 @@ void setup()
 */
 void loop()
 {
-    //ML Code
+
     // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
     if (ei_sleep(5) != EI_IMPULSE_OK) {
         return;
@@ -216,69 +214,72 @@ void loop()
                 result.timing.dsp, result.timing.classification, result.timing.anomaly);
 
 #if EI_CLASSIFIER_OBJECT_DETECTION == 1
-    bool bb_found = result.bounding_boxes[0].value > 0;
-    for (size_t ix = 0; ix < result.bounding_boxes_count; ix++) {
-        auto bb = result.bounding_boxes[ix];
+    ei_printf("Object detection bounding boxes:\r\n");
+    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
+        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
         if (bb.value == 0) {
             continue;
         }
-        ei_printf("    %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\n", bb.label, bb.value, bb.x, bb.y, bb.width, bb.height);
-
-      //Note: Used Label in our project: bb.label,bb.value
-      //bb.label: Which Object is Detected                      Char Value              =myData.a
-      //bb.value: Accuracy Percentage                           float Value             =myData.c
-
-    //Sender Code
-    int sentLabel=0;
-    //Conditioning
-    if(bb.label=="B")
-    {
-      if(bb.value >=0.85)
-      {
-        sentLabel=1;//1 for Biodegradable
+        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
+                bb.label,
+                bb.value,
+                bb.x,
+                bb.y,
+                bb.width,
+                bb.height);
+        if(bb.label=="B"){
+          myData.b=1;   //BIODEGRADABLE
+        }
+        else if(bb.label=="N"){
+          myData.b=2;   //NON-BIODEGRADABLE
+        }
+        else{
+          myData.b=-1;
+        }
+              
+      // Send message via ESP-NOW
+      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+      
+      if (result == ESP_OK) {
+        Serial.println("Sent with success");
       }
-    }
-    else if(bb.label=="N"){
-      if(bb.value>=0.85)
-      {
-        sentLabel=2;//2 for Non-Biodegradable
+      else {
+        Serial.println("Error sending the data");
       }
+      delay(2000);   
     }
-    else{//Provision for Garbage value Detection
-      Serial.println("ERRORR");
-    }
-    // Set values to send
-    //strcpy(myData.a, "THIS IS A CHAIR");
-    if(sentLabel>0)
-    {
-      myData.b = sentLabel;
-    }
-    myData.c = 0.0;
-    //myData.d = false;
-    
-    // Send message via ESP-NOW
-    esp_err_t SendingResult = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-    if (SendingResult == ESP_OK) {
-      Serial.println("Sent with success");
-    }
-    else {
-      Serial.println("Error sending the data");
-    }
-    delay(2000);      
-    }
-    if (!bb_found) {
-        ei_printf("    Scanning.....\n");
-    }
+
+    // Print the prediction results (classification)
 #else
-    for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-        ei_printf("    %s: %.5f\n", result.classification[ix].label,
-                                    result.classification[ix].value);
+    ei_printf("Predictions:\r\n");
+    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
+        ei_printf("%.5f\r\n", result.classification[i].value);
     }
 #endif
 
-#if EI_CLASSIFIER_HAS_ANOMALY == 1
-        ei_printf("    anomaly score: %.3f\n", result.anomaly);
+    // Print anomaly result (if it exists)
+#if EI_CLASSIFIER_HAS_ANOMALY
+    ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
 #endif
+
+#if EI_CLASSIFIER_HAS_VISUAL_ANOMALY
+    ei_printf("Visual anomalies:\r\n");
+    for (uint32_t i = 0; i < result.visual_ad_count; i++) {
+        ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
+        if (bb.value == 0) {
+            continue;
+        }
+        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
+                bb.label,
+                bb.value,
+                bb.x,
+                bb.y,
+                bb.width,
+                bb.height);
+    }
+#endif
+
 
     free(snapshot_buf);
 
