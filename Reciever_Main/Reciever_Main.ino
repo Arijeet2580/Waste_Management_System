@@ -1,15 +1,39 @@
 #include <esp_now.h>
 #include <WiFi.h>
+#include <ESP32Servo.h>
+#include <DHT.h>
+#include <FirebaseESP32.h>
+#include <Wire.h>
+#include <DHT.h>
+#include <NTPClient.h>      // For NTP time sync
+#include <WiFiUdp.h>        // Required for NTP
 //Alert LED Code
 #define BIO_LED 25
 #define NBIO_LED 26
-//Servo Code
-#include <ESP32Servo.h>
-//DHT22 Code
-#include <DHT.h>
-#define DHTPIN 4
-#define DHTTYPE DHT22
-DHT dht(DHTPIN,DHTTYPE);
+
+#define DHT_SENSOR_PIN  33
+#define DHT_SENSOR_TYPE DHT22
+DHT dht_sensor(DHT_SENSOR_PIN, DHT_SENSOR_TYPE); 
+
+// Ultrasonic Sensor Pins
+#define TRIG_PIN 26
+#define ECHO_PIN 25
+
+// Variables
+int count = 0;
+float distance;
+int duration;
+
+FirebaseData firebaseData;
+FirebaseJson json;
+
+FirebaseConfig config;    // Firebase configuration
+FirebaseAuth auth;        // Firebase authentication
+
+// NTP Client for time synchronization
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000);  // GMT+5:30 (19800 sec offset)
+
 Servo sg1;
 Servo sg2;
 
@@ -30,7 +54,50 @@ struct_message myData;
 
 // callback function that will be executed when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  //Moupriya Code
+    // Update NTP time
+  timeClient.update();
+  String timestamp = timeClient.getFormattedTime();
+
+  // Read ultrasonic sensor
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(20);
+  digitalWrite(TRIG_PIN, LOW);
+  duration = pulseIn(ECHO_PIN, HIGH);
+  distance = duration * 0.034 / 2;
+  count++;
+
+  // Read DHT sensor
+  float humi = dht_sensor.readHumidity();
+  float tempC = dht_sensor.readTemperature();
+  float tempF = dht_sensor.readTemperature(true);
+
+  if (isnan(tempC)  isnan(tempF)  isnan(humi)) {
+    Serial.println("Failed to read from DHT sensor!");
+  } else {
+    Serial.println("Humidity: " + String(humi) + "%");
+    Serial.println("Temperature: " + String(tempC) + "°C  ~  " + String(tempF) + "°F");
+  }
   
+  Serial.println("Serial no: " + String(count));
+  Serial.println("Distance: " + String(distance));
+  Serial.println("Timestamp: " + timestamp);
+
+  // Prepare JSON for Firebase
+  json.set("/distance", distance);
+  json.set("/no", count);
+  json.set("/humidity", humi);
+  json.set("/temperature", tempC);
+  json.set("/timestamp", timestamp);  // Add timestamp
+
+  String path = "/Sensor/" + String(millis());
+
+  // Send to Firebase
+  if (Firebase.setJSON(firebaseData, path.c_str(), json)) {
+    Serial.println("Data sent to Firebase");
+  } else {
+    Serial.println("Firebase error: " + firebaseData.errorReason());
+  }
   memcpy(&myData, incomingData, sizeof(myData));
   Serial.print("Bytes received: ");
   Serial.println(len);
@@ -92,16 +159,37 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 }
  
 void setup() {
+  //Moupriya Code
+  Serial.begin(9600);
+  dht_sensor.begin();
+
+  // Initialize Ultrasonic Sensor
+  pinMode(TRIG_PIN, OUTPUT); 
+  pinMode(ECHO_PIN, INPUT); 
+  digitalWrite(TRIG_PIN, LOW); 
+
+  // Connect to Wi-Fi
+  WiFi.begin(WIFI_SSID, WIFI_PASSORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      Serial.print(".");
+  }
+  Serial.println("\nConnected to Wi-Fi");
+  Serial.println(WiFi.localIP());
+
+  // Initialize NTP Client
+  timeClient.begin();
+  timeClient.update();  // Fetch current time
+
+  // Initialize Firebase
+  config.host = FIREBASE_HOST;
+  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
   //Servo Code
   sg1.attach(sg1pin);
   sg2.attach(sg2pin);
-
-  // Initialize Serial Monitor
-  Serial.begin(115200);
-  // Set device as a Wi-Fi Station
-  WiFi.mode(WIFI_STA);
-  //DHT22 Code
-  dht.begin();
 
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
