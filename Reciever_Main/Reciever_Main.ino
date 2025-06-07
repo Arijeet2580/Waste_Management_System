@@ -9,13 +9,13 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// WiFi credentials - Replace with your actual credentials
-#define WIFI_SSID "your_wifi_ssid"
-#define WIFI_PASSWORD "your_wifi_password"
+// WiFi credentials
+#define WIFI_SSID "MouPriya"
+#define WIFI_PASSWORD "h9nxcjvu"
 
-// Firebase credentials - Replace with your actual Firebase config
-#define FIREBASE_HOST "your-project.firebaseio.com"
-#define FIREBASE_AUTH "your_firebase_secret_key"
+// Firebase credentials
+#define FIREBASE_HOST "https://sensor-data-e1f18-default-rtdb.asia-southeast1.firebasedatabase.app/"
+#define FIREBASE_AUTH "AIzaSyCG0V9n4ynFrGtaYy8zttaLXrW5yy7FF9U"
 
 // Alert LED Pins
 #define BIO_LED 23
