@@ -20,13 +20,14 @@
 // Alert LED Pins
 #define BIO_LED 23
 #define NBIO_LED 22
+#define BIN_FULL_LED 21  // New LED for bin full warning
 
 // DHT22 Sensor
 #define DHT_SENSOR_PIN 33
 #define DHT_SENSOR_TYPE DHT22
 DHT dht_sensor(DHT_SENSOR_PIN, DHT_SENSOR_TYPE);
 
-// Ultrasonic Sensor Pins
+// Ultrasonic Sensor Pins for Bin Level Monitoring
 #define TRIG_PIN 26
 #define ECHO_PIN 25
 
@@ -44,10 +45,18 @@ DHT dht_sensor(DHT_SENSOR_PIN, DHT_SENSOR_TYPE);
 #define SCREEN_ADDRESS 0x3C
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+// Bin Level Configuration
+#define BIN_HEIGHT 50.0        // Total bin height in cm
+#define BIN_FULL_THRESHOLD 85  // Bin considered full at 85%
+#define BIN_WARNING_THRESHOLD 70 // Warning at 70%
+
 // Variables
 int count = 0;
-float distance;
+float binDistance;           // Distance from sensor to waste surface
+float binLevel;             // Calculated bin fill level percentage
 long duration;
+bool binFull = false;
+bool binWarning = false;
 
 // Firebase objects
 FirebaseData firebaseData;
@@ -71,8 +80,41 @@ typedef struct struct_message {
 
 struct_message myData;
 
-// Function to update OLED display
-void updateOLED(String wasteType, float humidity, float temperature, float methanePPM, float distance) {
+// Function to calculate bin fill level
+float calculateBinLevel(float distance) {
+    // If distance is greater than bin height, bin is empty
+    if (distance >= BIN_HEIGHT) {
+        return 0.0;
+    }
+    
+    // Calculate fill level percentage
+    float fillHeight = BIN_HEIGHT - distance;
+    float fillPercentage = (fillHeight / BIN_HEIGHT) * 100.0;
+    
+    // Ensure percentage is within bounds
+    if (fillPercentage < 0) fillPercentage = 0;
+    if (fillPercentage > 100) fillPercentage = 100;
+    
+    return fillPercentage;
+}
+
+// Function to get bin status string
+String getBinStatus(float level) {
+    if (level >= BIN_FULL_THRESHOLD) {
+        return "FULL";
+    } else if (level >= BIN_WARNING_THRESHOLD) {
+        return "WARNING";
+    } else if (level > 30) {
+        return "MEDIUM";
+    } else if (level > 10) {
+        return "LOW";
+    } else {
+        return "EMPTY";
+    }
+}
+
+// Function to update OLED display with bin level
+void updateOLED(String wasteType, float humidity, float temperature, float methanePPM, float binLevel) {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
@@ -85,27 +127,70 @@ void updateOLED(String wasteType, float humidity, float temperature, float metha
     } else if (wasteType == "Non-Biodegradable") {
         display.print("NON-BIO");
     } else {
-        display.print("UNKNOWN");
+        display.print("READY");
     }
     
-    // Line 2: Humidity and Temperature
+    // Line 2: Bin Level (prominent display)
     display.setTextSize(1);
     display.setCursor(0, 20);
+    display.print("BIN: " + String(binLevel, 1) + "% ");
+    display.print(getBinStatus(binLevel));
+    
+    // Line 3: Environmental data
+    display.setCursor(0, 32);
     display.print("H:" + String(humidity, 1) + "%  T:" + String(temperature, 1) + "C");
     
-    // Line 3: Methane level
-    display.setCursor(0, 32);
-    display.print("Methane: " + String(methanePPM, 0) + " PPM");
-    
-    // Line 4: Distance
+    // Line 4: Methane level
     display.setCursor(0, 44);
-    display.print("Distance: " + String(distance, 1) + " cm");
+    display.print("CH4: " + String(methanePPM, 0) + " PPM");
     
-    // Add status indicator
+    // Line 5: Status or warning
     display.setCursor(0, 56);
-    display.print("Status: Active");
+    if (binLevel >= BIN_FULL_THRESHOLD) {
+        display.print(">>> BIN FULL <<<");
+    } else if (binLevel >= BIN_WARNING_THRESHOLD) {
+        display.print(">> BIN WARNING <<");
+    } else {
+        display.print("Status: Active");
+    }
     
     display.display();
+}
+
+// Function to read bin level
+void readBinLevel() {
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(20);
+    digitalWrite(TRIG_PIN, LOW);
+    duration = pulseIn(ECHO_PIN, HIGH);
+    binDistance = duration * 0.034 / 2;
+    binLevel = calculateBinLevel(binDistance);
+    
+    // Update bin status flags
+    binFull = (binLevel >= BIN_FULL_THRESHOLD);
+    binWarning = (binLevel >= BIN_WARNING_THRESHOLD);
+    
+    Serial.println("Bin Distance: " + String(binDistance) + " cm");
+    Serial.println("Bin Level: " + String(binLevel) + "% (" + getBinStatus(binLevel) + ")");
+}
+
+// Function to handle bin full alerts
+void handleBinAlerts() {
+    if (binFull) {
+        digitalWrite(BIN_FULL_LED, HIGH);
+        Serial.println("*** BIN FULL ALERT - PLEASE EMPTY ***");
+    } else if (binWarning) {
+        // Blink warning LED
+        static unsigned long lastBlink = 0;
+        static bool ledState = false;
+        if (millis() - lastBlink > 500) {
+            ledState = !ledState;
+            digitalWrite(BIN_FULL_LED, ledState);
+            lastBlink = millis();
+        }
+    } else {
+        digitalWrite(BIN_FULL_LED, LOW);
+    }
 }
 
 // Callback function for ESP-NOW data reception
@@ -119,16 +204,20 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     Serial.println(myData.b);
     Serial.println();
     
+    // Check bin level before processing waste
+    readBinLevel();
+    
+    // If bin is full, don't process new waste
+    if (binFull) {
+        Serial.println("*** BIN FULL - CANNOT ACCEPT MORE WASTE ***");
+        updateOLED("BIN FULL", 0, 0, 0, binLevel);
+        return;
+    }
+    
     // Update NTP time
     timeClient.update();
     String timestamp = timeClient.getFormattedTime();
     
-    // Read ultrasonic sensor
-    digitalWrite(TRIG_PIN, HIGH);
-    delayMicroseconds(20);
-    digitalWrite(TRIG_PIN, LOW);
-    duration = pulseIn(ECHO_PIN, HIGH);
-    distance = duration * 0.034 / 2;
     count++;
     
     // Read DHT sensor
@@ -163,13 +252,16 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     }
     
     Serial.println("Serial no: " + String(count));
-    Serial.println("Distance: " + String(distance) + " cm");
     Serial.println("Methane Level: " + String(methane_ppm) + " PPM");
     Serial.println("Timestamp: " + timestamp);
     
-    // Prepare JSON for Firebase
+    // Prepare JSON for Firebase with bin level data
     json.clear();
-    json.set("/distance", distance);
+    json.set("/bin_distance", binDistance);
+    json.set("/bin_level_percent", binLevel);
+    json.set("/bin_status", getBinStatus(binLevel));
+    json.set("/bin_full", binFull);
+    json.set("/bin_warning", binWarning);
     json.set("/no", count);
     json.set("/humidity", humi);
     json.set("/temperature", tempC);
@@ -191,7 +283,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     sg2.write(90);
     delay(100);
     
-    // Waste classification logic and LCD update
+    // Waste classification logic and display update
     String wasteType = "";
     
     if ((myData.b == 1) || (methane_ppm >= 500) || (humi >= 74.5)) {
@@ -201,17 +293,19 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         digitalWrite(BIO_LED, HIGH);
         digitalWrite(NBIO_LED, LOW);
         
-        // Update OLED display
-        updateOLED(wasteType, humi, tempC, methane_ppm, distance);
+        // Update OLED display with bin level
+        updateOLED(wasteType, humi, tempC, methane_ppm, binLevel);
         
-        // Move servos for biodegradable waste
-        sg1.write(0);
-        sg2.write(180);
-        delay(5000); // Wait 5 seconds
-        
-        // Return to neutral position
-        sg1.write(90);
-        sg2.write(90);
+        // Move servos for biodegradable waste (only if bin not full)
+        if (!binFull) {
+            sg1.write(0);
+            sg2.write(180);
+            delay(5000); // Wait 5 seconds
+            
+            // Return to neutral position
+            sg1.write(90);
+            sg2.write(90);
+        }
         digitalWrite(BIO_LED, LOW);
         
     } else if ((myData.b == 2) || (methane_ppm < 500) || (humi < 74.5)) {
@@ -221,25 +315,27 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         digitalWrite(NBIO_LED, HIGH);
         digitalWrite(BIO_LED, LOW);
         
-        // Update OLED display
-        updateOLED(wasteType, humi, tempC, methane_ppm, distance);
+        // Update OLED display with bin level
+        updateOLED(wasteType, humi, tempC, methane_ppm, binLevel);
         
-        // Move servos for non-biodegradable waste
-        sg1.write(180);
-        sg2.write(0);
-        delay(5000); // Wait 5 seconds
-        
-        // Return to neutral position
-        sg1.write(90);
-        sg2.write(90);
+        // Move servos for non-biodegradable waste (only if bin not full)
+        if (!binFull) {
+            sg1.write(180);
+            sg2.write(0);
+            delay(5000); // Wait 5 seconds
+            
+            // Return to neutral position
+            sg1.write(90);
+            sg2.write(90);
+        }
         digitalWrite(NBIO_LED, LOW);
         
     } else {
         wasteType = "Unknown";
         Serial.println("Unknown waste type - no classification");
         
-        // Update OLED display
-        updateOLED(wasteType, humi, tempC, methane_ppm, distance);
+        // Update OLED display with bin level
+        updateOLED(wasteType, humi, tempC, methane_ppm, binLevel);
         
         // Turn off both LEDs
         digitalWrite(BIO_LED, LOW);
@@ -252,7 +348,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("ESP32 Smart Waste Segregation System Starting...");
+    Serial.println("ESP32 Smart Waste Segregation with Bin Level Monitoring Starting...");
     
     // Initialize DHT sensor
     dht_sensor.begin();
@@ -260,10 +356,12 @@ void setup() {
     // Initialize LED pins
     pinMode(BIO_LED, OUTPUT);
     pinMode(NBIO_LED, OUTPUT);
+    pinMode(BIN_FULL_LED, OUTPUT);
     digitalWrite(BIO_LED, LOW);
     digitalWrite(NBIO_LED, LOW);
+    digitalWrite(BIN_FULL_LED, LOW);
     
-    // Initialize ultrasonic sensor pins
+    // Initialize ultrasonic sensor pins for bin level monitoring
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
     digitalWrite(TRIG_PIN, LOW);
@@ -291,7 +389,8 @@ void setup() {
     display.println("WASTE");
     display.setTextSize(1);
     display.setCursor(0, 40);
-    display.println("System Starting...");
+    display.println("Bin Monitor");
+    display.println("Starting...");
     display.display();
     delay(2000);
     
@@ -330,25 +429,38 @@ void setup() {
     esp_now_register_recv_cb(OnDataRecv);
     Serial.println("ESP-NOW callback registered");
     
-    // Display ready message on OLED
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("SYSTEM");
-    display.println("READY");
-    display.setTextSize(1);
-    display.setCursor(0, 40);
-    display.println("Waiting for waste...");
-    display.setCursor(0, 56);
-    display.println("ESP-NOW Active");
-    display.display();
+    // Take initial bin level reading
+    readBinLevel();
     
-    Serial.println("System ready - waiting for data...");
+    // Display ready message on OLED with bin level
+    updateOLED("READY", 0, 0, 0, binLevel);
+    
+    Serial.println("System ready - monitoring bin level...");
+    Serial.println("Bin Height: " + String(BIN_HEIGHT) + " cm");
+    Serial.println("Full Threshold: " + String(BIN_FULL_THRESHOLD) + "%");
+    Serial.println("Warning Threshold: " + String(BIN_WARNING_THRESHOLD) + "%");
 }
 
 void loop() {
-    // Main loop - ESP-NOW callback handles all processing
+    // Continuously monitor bin level
+    static unsigned long lastBinCheck = 0;
+    if (millis() - lastBinCheck > 5000) { // Check bin level every 5 seconds
+        readBinLevel();
+        handleBinAlerts();
+        
+        // Update display if no recent activity
+        static unsigned long lastActivity = 0;
+        if (millis() - lastActivity > 30000) { // 30 seconds of no activity
+            updateOLED("READY", 0, 0, 0, binLevel);
+            lastActivity = millis();
+        }
+        
+        lastBinCheck = millis();
+    }
+    
+    // Handle bin full alerts
+    handleBinAlerts();
+    
     // Keep WiFi and NTP updated
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi disconnected, reconnecting...");
